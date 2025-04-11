@@ -4,9 +4,11 @@
 #include <pthread.h>
 
 #define ARRAY_SIZE 20000000
-#define BUCKETS 20000
-#define BUCKET_SIZE_OVERHEAD 2 // describes how much more memory should be 
-                               // allocated to avoid buckets realocation
+#define BUCKETS 8000
+#define BUCKET_SIZE_OVERHEAD 1.3 // describes how much more memory should be 
+                                 // allocated to avoid buckets realocation
+                                 // works with values between (1.1 - 1.2)
+                                 // but is unstable
 #define MEASURE_TIME(x) \
 _Pragma("omp master")   \
 x = omp_get_wtime();    \
