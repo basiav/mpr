@@ -1,5 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=sort_test_%A_%a
+#SBATCH --account=plgmpr25
+#SBATCH --partition=plgrid-testing
 #SBATCH --array=1-8
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=${SLURM_ARRAY_TASK_ID}
