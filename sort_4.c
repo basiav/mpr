@@ -59,7 +59,6 @@ int main(int argc, char** argv)
     unsigned int     seed;
     array_t          array;
     Bucket_t*        buckets;
-    pthread_mutex_t* buckets_mutexes;
 
     /* -------------------------------------------- */
     /*             STRUCTURES ALLOCATION            */
@@ -86,16 +85,6 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    buckets_mutexes = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t) * BUCKETS);
-    if( !buckets_mutexes )
-    {
-        free(array);
-        free(buckets);
-
-        perror("Mutex list allocation failed");
-        return EXIT_FAILURE;
-    }
-
     /* -------------------------------------------- */
     /*           STRUCTURES INITIALIZATION          */
     /* -------------------------------------------- */
@@ -107,17 +96,13 @@ int main(int argc, char** argv)
             for( size_t j=0; j<BUCKETS; j++ )
             {
                 free_bucket_elements(buckets + j);
-                pthread_mutex_destroy(buckets_mutexes + j);
             }
             free(array);
             free(buckets);
-            free(buckets_mutexes);
 
             perror("Bucket allocation failed");
             return EXIT_FAILURE;
         }
-
-        pthread_mutex_init(buckets_mutexes + i, NULL);
     }
 
     /* -------------------------------------------- */
@@ -153,13 +138,19 @@ int main(int argc, char** argv)
         #pragma omp for
         for(size_t i=0; i<ARRAY_SIZE; i++)
         {
-            // calculate desired bucket index
+            // predefine variables for atomic capture
             const size_t idx = (unsigned long long)array[i] * BUCKETS / ((unsigned long long)RAND_MAX + 1);
-            
-            // lock desired bucket mutex and than add value to the bucket
-            pthread_mutex_lock(buckets_mutexes + idx);
-            add_element_to_bucket(buckets + idx, array[i]);
-            pthread_mutex_unlock(buckets_mutexes + idx);
+            Bucket_t* target_bucket = buckets + idx;
+            size_t insertion_index;
+
+            // capture the target value index atomicaly and increase the count
+            // because the index is captured atomicaly and count is increased
+            // each insertion_index is guaranteed to be unique for different threads
+            // meaning no need for mutexes when adding the element.
+            #pragma omp atomic capture
+            insertion_index = target_bucket->count++;
+
+            target_bucket->elements[insertion_index] = array[i];
         }
         MEASURE_TIME(t2e)
 
@@ -205,11 +196,9 @@ int main(int argc, char** argv)
     for( size_t i=0; i<BUCKETS; i++ )
     {
         free_bucket_elements(buckets + i);
-        pthread_mutex_destroy(buckets_mutexes + i);
     }
     free(array);
     free(buckets);
-    free(buckets_mutexes);
 
     /* -------------------------------------------- */
     /*            OUTPUT MEASUREMENT DATA           */
