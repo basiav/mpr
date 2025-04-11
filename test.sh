@@ -1,10 +1,10 @@
 #!/bin/bash
 #SBATCH --job-name=sort_test_%A_%a
-#SBATCH --account=plgmpr25
-#SBATCH --partition=plgrid-testing
+#SBATCH --account=plgmpr25-cpu
+#SBATCH --partition=plgrid
 #SBATCH --array=1-8
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=${SLURM_ARRAY_TASK_ID}
+#SBATCH --cpus-per-task=8
 #SBATCH --output=slurm_logs/slurm_%A_%a.out
 #SBATCH --error=slurm_logs/slurm_%A_%a.err
 #SBATCH --time=00:10:00
@@ -13,7 +13,7 @@
 # --- Configuration ---
 ALGO_NAME=$1
 NUM_RUNS=20
-OUTPUT_CSV="results_${ALGO_NAME}.csv"
+OUTPUT_CSV="results.csv"
 EXECUTABLE="./${ALGO_NAME}.o"
 THREADS=${SLURM_ARRAY_TASK_ID}
 
@@ -43,7 +43,7 @@ do
 
     # Check if execution was successful and produced output
     if [ $? -eq 0 ] && [ -n "$output_times" ]; then
-        echo "${ALGO_NAME};${output_times}" >> ${TMP_RESULTS}
+        echo "${ALGO_NAME};${THREADS};${output_times}" >> ${TMP_RESULTS}
     else
         echo "Warning: Run $i for ${ALGO_NAME} with ${THREADS} threads failed or produced no output." >> "slurm_logs/run_error_${ALGO_NAME}_${THREADS}.log"
     fi
