@@ -2,12 +2,12 @@
 #SBATCH --job-name=sort_test_%A_%a
 #SBATCH --account=plgmpr25-cpu
 #SBATCH --partition=plgrid
-#SBATCH --array=1-8
+#SBATCH --array=1-16
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 #SBATCH --output=slurm_logs/slurm_%A_%a.out
 #SBATCH --error=slurm_logs/slurm_%A_%a.err
-#SBATCH --time=00:10:00
+#SBATCH --time=02:00:00
 #SBATCH --mem-per-cpu=500M
 
 # --- Configuration ---
@@ -39,13 +39,14 @@ TMP_RESULTS=$(mktemp)
 for (( i=1; i<=NUM_RUNS; i++ ))
 do
     # Execute the program and capture output
-    output_times=$(${EXECUTABLE})
+    buckets_count=$(( 7000 * ${THREADS} ))
+    output_times=$(${EXECUTABLE} ${buckets_count})
 
     # Check if execution was successful and produced output
     if [ $? -eq 0 ] && [ -n "$output_times" ]; then
-        echo "${ALGO_NAME};${THREADS};${output_times}" >> ${TMP_RESULTS}
+        echo "${ALGO_NAME};${THREADS};${buckets_count};${output_times}" >> ${TMP_RESULTS}
     else
-        echo "Warning: Run $i for ${ALGO_NAME} with ${THREADS} threads failed or produced no output." >> "slurm_logs/run_error_${ALGO_NAME}_${THREADS}.log"
+        echo "Warning: Run $i for ${ALGO_NAME} with ${THREADS} threads and ${buckets_count} buckets failed or produced no output." >> "slurm_logs/run_error_${ALGO_NAME}_${THREADS}.log"
     fi
 done
 

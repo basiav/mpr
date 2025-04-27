@@ -5,7 +5,7 @@
 
 #define ARRAY_SIZE 20000000
 #define BUCKETS 8000
-#define BUCKET_SIZE_OVERHEAD 1.3 // describes how much more memory should be 
+#define BUCKET_SIZE_OVERHEAD 2 // describes how much more memory should be 
                                  // allocated to avoid buckets realocation
                                  // works with values between (1.1 - 1.2)
                                  // but is unstable
@@ -62,6 +62,21 @@ int main(int argc, char** argv)
     array_t          array;
     Bucket_t*        buckets;
     pthread_mutex_t* buckets_mutexes;
+    size_t           buckets_count;
+
+    if( argc != 2 )
+    {
+        buckets_count = BUCKETS;
+    }
+    else
+    {
+        buckets_count = atoi(argv[1]);
+        if( buckets_count < 1 || buckets_count > ARRAY_SIZE )
+        {
+            fprintf(stderr, "Invalid number of buckets\n");
+            return EXIT_FAILURE;
+        }
+    }
 
     /* -------------------------------------------- */
     /*             STRUCTURES ALLOCATION            */
@@ -79,7 +94,7 @@ int main(int argc, char** argv)
         array[i] = 0;
     }
 
-    buckets = (Bucket_t*)malloc(sizeof(Bucket_t) * BUCKETS);
+    buckets = (Bucket_t*)malloc(sizeof(Bucket_t) * buckets_count);
     if( !buckets )
     {
         free(array);
@@ -88,7 +103,7 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
 
-    buckets_mutexes = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t) * BUCKETS);
+    buckets_mutexes = (pthread_mutex_t*)malloc(sizeof(pthread_mutex_t) * buckets_count);
     if( !buckets_mutexes )
     {
         free(array);
@@ -101,12 +116,12 @@ int main(int argc, char** argv)
     /* -------------------------------------------- */
     /*           STRUCTURES INITIALIZATION          */
     /* -------------------------------------------- */
-    for( size_t i=0; i<BUCKETS; i++ )
+    for( size_t i=0; i<buckets_count; i++ )
     {
-        if( initialize_bucket(buckets + i, ARRAY_SIZE * 2 / BUCKETS ) < 0)
+        if( initialize_bucket(buckets + i, ARRAY_SIZE * BUCKET_SIZE_OVERHEAD / buckets_count ) < 0)
         {
             // if bucket allocation failed perform correct teardown and exit
-            for( size_t j=0; j<BUCKETS; j++ )
+            for( size_t j=0; j<buckets_count; j++ )
             {
                 free_bucket_elements(buckets + j);
                 pthread_mutex_destroy(buckets_mutexes + j);
@@ -156,7 +171,7 @@ int main(int argc, char** argv)
         for(size_t i=0; i<ARRAY_SIZE; i++)
         {
             // calculate desired bucket index
-            const size_t idx = (unsigned long long)array[i] * BUCKETS / ((unsigned long long)RAND_MAX + 1);
+            const size_t idx = (unsigned long long)array[i] * buckets_count / ((unsigned long long)RAND_MAX + 1);
             
             // lock desired bucket mutex and than add value to the bucket
             pthread_mutex_lock(buckets_mutexes + idx);
@@ -168,7 +183,7 @@ int main(int argc, char** argv)
         // sort the buckets
         MEASURE_TIME(t3s)
         #pragma omp for
-        for(size_t i=0; i<BUCKETS; i++)
+        for(size_t i=0; i<buckets_count; i++)
         {
             qsort(buckets[i].elements, buckets[i].count, sizeof(int), compare_function);
         }
@@ -177,7 +192,7 @@ int main(int argc, char** argv)
         // fill original array with sorted elements
         MEASURE_TIME(t4s)
         #pragma omp for
-        for(size_t i=0; i<BUCKETS; i++)
+        for(size_t i=0; i<buckets_count; i++)
         {
             // calculate offset for bucket currently being written to array
             const size_t offset = calculate_bucket_final_offset(buckets, i);
@@ -204,7 +219,7 @@ int main(int argc, char** argv)
     /* -------------------------------------------- */
     /*              DESTROY STRUCTURES              */
     /* -------------------------------------------- */
-    for( size_t i=0; i<BUCKETS; i++ )
+    for( size_t i=0; i<buckets_count; i++ )
     {
         free_bucket_elements(buckets + i);
         pthread_mutex_destroy(buckets_mutexes + i);
