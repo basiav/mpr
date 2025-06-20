@@ -39,11 +39,21 @@ int add_element_to_bucket(Bucket_t* bucket, int value) {
     return 0;
 }
 
+// int initialize_bucket(Bucket_t* bucket, size_t initial_capacity) {
+//     bucket->elements = malloc(sizeof(int)*initial_capacity);
+//     if(!bucket->elements) { return -1; }
+//     bucket->count = 0;
+//     bucket->capacity = initial_capacity;
+//     return 0;
+// }
+
 int initialize_bucket(Bucket_t* bucket, size_t initial_capacity) {
-    bucket->elements = malloc(sizeof(int)*initial_capacity);
+    // CHANGE: Ensure capacity is never zero.
+    size_t real_capacity = initial_capacity > 0 ? initial_capacity : 16; // Set a minimum capacity
+    bucket->elements = malloc(sizeof(int)*real_capacity);
     if(!bucket->elements) { return -1; }
     bucket->count = 0;
-    bucket->capacity = initial_capacity;
+    bucket->capacity = real_capacity;
     return 0;
 }
 // int initialize_bucket(Bucket_t* bucket, size_t initial_capacity) {
