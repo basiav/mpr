@@ -238,6 +238,10 @@
 #include "omp.h"
 #include "buckets.h"
 
+#define MEASURE_TIME(x) \
+_Pragma("omp master")   \
+x = omp_get_wtime();
+
 #define ARRAY_SIZE 20000000
 #define BUCKETS 1000           // Domyślna liczba KUBEŁKÓW NA WĄTEK
 #define BUCKET_SIZE_OVERHEAD 4 // Mnożnik dla alokacji pamięci w kubełkach
@@ -245,45 +249,6 @@
 typedef int  array_element_t;
 typedef array_element_t* array_t;
 
-// // --- Implementacja struktur i funkcji z pliku buckets.h ---
-// typedef struct {
-//     int* elements;
-//     size_t count;
-//     size_t capacity;
-// } Bucket_t;
-
-// int initialize_bucket(Bucket_t* bucket, size_t initial_capacity) {
-//     bucket->elements = malloc(sizeof(int)*initial_capacity);
-//     if(!bucket->elements) { return -1; }
-//     bucket->count = 0;
-//     bucket->capacity = initial_capacity;
-//     return 0;
-// }
-
-// int add_element_to_bucket(Bucket_t* bucket, int value) {
-//     if (bucket->count >= bucket->capacity) {
-//         size_t new_capacity = bucket->capacity * 2;
-//         fprintf(stderr, "Zmiana rozmiaru kubełka z %zu na %zu elementów\n", bucket->capacity, new_capacity);
-//         int* new_elements = realloc(bucket->elements, sizeof(int) * new_capacity);
-//         if (!new_elements) {
-//             perror("Błąd reallokacji kubełka");
-//             exit(EXIT_FAILURE);
-//         }
-//         bucket->elements = new_elements;
-//         bucket->capacity = new_capacity;
-//     }
-//     bucket->elements[bucket->count] = value;
-//     bucket->count++;
-//     return 0;
-// }
-
-// void free_bucket_elements(Bucket_t* bucket) {
-//     if (bucket->elements) {
-//         free(bucket->elements);
-//         bucket->elements = NULL;
-//     }
-// }
-// // --- Koniec implementacji z buckets.h ---
 
 int array_is_sorted(array_t array) {
     for(size_t i = 0; i < ARRAY_SIZE - 1; i++) {
@@ -325,17 +290,18 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    unsigned int seed = time(NULL);
-    for(size_t i = 0; i < ARRAY_SIZE; i++) {
-        // array[i] = rand_r(&seed);
-        array[i] = rand();
-    }
+    double t_total_s, t_total_e, t_total;
+    double t_fill_s, t_fill_e, t_fill;
+    double t_distribute_s, t_distribute_e, t_distribute;
+    double t_sort_s, t_sort_e, t_sort;
+    double t_merge_s, t_merge_e, t_merge;
 
-    double ts = omp_get_wtime();
+    MEASURE_TIME(t_total_s);
 
     #pragma omp parallel
     {
         const int tid = omp_get_thread_num();
+        unsigned int seed = time(NULL) ^ tid;
 
         #pragma omp master
         {
@@ -350,6 +316,15 @@ int main(int argc, char** argv) {
         }
         #pragma omp barrier
 
+        MEASURE_TIME(t_fill_s);
+        #pragma omp for
+        for(size_t i = 0; i < ARRAY_SIZE; i++) {
+            // array[i] = rand_r(&seed);
+            array[i] = rand();
+        }
+        MEASURE_TIME(t_fill_e);
+        #pragma omp barrier
+
         for(size_t i = 0; i < buckets_per_thread; ++i) {
             size_t initial_size = (ARRAY_SIZE / num_threads / buckets_per_thread) * BUCKET_SIZE_OVERHEAD;
             initialize_bucket(&thread_buckets[tid][i], initial_size);
@@ -361,6 +336,7 @@ int main(int argc, char** argv) {
             ? ((unsigned long long)RAND_MAX + 1)
             : (unsigned long long)(tid + 1) * range_per_thread;
 
+        MEASURE_TIME(t_distribute_s);
         for(size_t i = 0; i < ARRAY_SIZE; i++) {
             if((unsigned int)array[i] >= my_min_range && (unsigned int)array[i] < my_max_range) {
                 const size_t local_val = (unsigned int)array[i] - my_min_range;
@@ -368,12 +344,15 @@ int main(int argc, char** argv) {
                 add_element_to_bucket(&thread_buckets[tid][bucket_idx], array[i]);
             }
         }
+        MEASURE_TIME(t_distribute_e);
 
+        MEASURE_TIME(t_sort_s);
         size_t my_total_elements = 0;
         for(size_t i = 0; i < buckets_per_thread; i++) {
             qsort(thread_buckets[tid][i].elements, thread_buckets[tid][i].count, sizeof(int), compare_function);
             my_total_elements += thread_buckets[tid][i].count;
         }
+        MEASURE_TIME(t_sort_e);
         thread_element_counts[tid] = my_total_elements;
 
         #pragma omp barrier // KRYTYCZNA BARIERA: Czekamy, aż wszystkie wątki policzą swoje elementy
@@ -381,6 +360,7 @@ int main(int argc, char** argv) {
         // (ZMIANA: Usunięto blok #pragma omp master i następującą po nim barierę)
         // --- Obliczanie offsetów (wersja "każdy dla siebie") ---
         // Każdy wątek sam oblicza swój offset startowy, iterując po wynikach poprzednich wątków.
+        MEASURE_TIME(t_merge_s);
         size_t write_offset = 0;
         for (int i = 0; i < tid; i++) {
             write_offset += thread_element_counts[i];
@@ -392,18 +372,23 @@ int main(int argc, char** argv) {
             memcpy(array + write_offset, thread_buckets[tid][i].elements, thread_buckets[tid][i].count * sizeof(array_element_t));
             write_offset += thread_buckets[tid][i].count;
         }
+        MEASURE_TIME(t_merge_e);
 
         for(size_t i = 0; i < buckets_per_thread; ++i) {
             free_bucket_elements(&thread_buckets[tid][i]);
         }
     }
 
-    double te = omp_get_wtime();
+    MEASURE_TIME(t_total_e);
+
+    t_total = t_total_e - t_total_s;
+    t_fill = t_fill_e - t_fill_s;
+    t_distribute = t_distribute_e - t_distribute_s;
+    t_sort = t_sort_e - t_sort_s;
+    t_merge = t_merge_e - t_merge_s;
 
     if (!array_is_sorted(array)) {
         fprintf(stderr, "Sortowanie nie powiodło się!\n");
-    } else {
-        printf("Sortowanie zakończone sukcesem.\n");
     }
 
     for(int i = 0; i < num_threads; ++i) {
@@ -414,7 +399,7 @@ int main(int argc, char** argv) {
     free(thread_element_counts);
     free(array);
 
-    printf("Całkowity czas sortowania: %.15lf s\n", te - ts);
+    // printf("Całkowity czas sortowania: %.15lf s\n", te - ts);
 
     return EXIT_SUCCESS;
 }
