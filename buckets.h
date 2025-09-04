@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+int BUCKET_RESIZING_FACTOR = 2;
+int INIT_CAPACITY = 16;
+
 typedef struct {
     int* elements;
     size_t count;
@@ -19,11 +22,9 @@ typedef struct {
 //     return 0;
 // }
 int add_element_to_bucket(Bucket_t* bucket, int value) {
+    // Resize the bucket
     if (bucket->count >= bucket->capacity) {
-        size_t new_capacity = bucket->capacity * 2;
-        
-        // Print info about resizing to stderr
-        fprintf(stderr, "Resizing bucket from %zu to %zu elements\n", bucket->capacity, new_capacity);
+        size_t new_capacity = bucket->capacity * BUCKET_RESIZING_FACTOR;
 
         int* new_elements = realloc(bucket->elements, sizeof(int) * new_capacity);
         if (!new_elements) {
@@ -49,9 +50,11 @@ int add_element_to_bucket(Bucket_t* bucket, int value) {
 
 int initialize_bucket(Bucket_t* bucket, size_t initial_capacity) {
     // CHANGE: Ensure capacity is never zero.
-    size_t real_capacity = initial_capacity > 0 ? initial_capacity : 16; // Set a minimum capacity
+    size_t real_capacity = initial_capacity > 0 ? initial_capacity : INIT_CAPACITY; // Set a minimum capacity
     bucket->elements = malloc(sizeof(int)*real_capacity);
+    
     if(!bucket->elements) { return -1; }
+    
     bucket->count = 0;
     bucket->capacity = real_capacity;
     return 0;

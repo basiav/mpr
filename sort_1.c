@@ -314,7 +314,7 @@ int main(int argc, char** argv) {
                 thread_buckets[i] = (Bucket_t*)malloc(sizeof(Bucket_t) * buckets_per_thread);
             }
         }
-        #pragma omp barrier
+        #pragma omp barrierh
 
         MEASURE_TIME(t_fill_s);
         #pragma omp for

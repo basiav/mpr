@@ -161,7 +161,8 @@ int main(int argc, char** argv)
         #pragma omp for
         for(size_t i=0; i<ARRAY_SIZE; i++)
         {
-            array[i] = rand_r(&seed);
+            // array[i] = rand_r(&seed);
+            array[i] = rand_s(&seed);
         }
         MEASURE_TIME(t1e)
 
