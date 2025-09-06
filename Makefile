@@ -14,3 +14,6 @@ sort_2: sort_2.c
 
 sort_4: sort_4.c
 	${CC} ${FLAGS} -o sort_4 sort_4.c -I. -fopenmp
+
+sort_1: sort_1.c
+	${CC} ${FLAGS} -o sort_1 sort_1.c -I. -fopenmp

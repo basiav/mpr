@@ -12,7 +12,7 @@
 
 # --- Configuration ---
 ALGO_NAME=$1
-NUM_RUNS=20
+NUM_RUNS=$2
 OUTPUT_CSV="results.csv"
 EXECUTABLE="./${ALGO_NAME}.o"
 THREADS=${SLURM_ARRAY_TASK_ID}
