@@ -54,143 +54,227 @@ size_t calculate_bucket_final_offset(Bucket_t* buckets, size_t bucket_idx)
     return offset;
 }
 
+void clear_memory(array_t array, Bucket_t*** thread_buckets, Bucket_t* buckets, int num_threads, size_t buckets_per_thread) {
+    free(array);
+    for (size_t t = 0; t < num_threads; t++) {
+        for (size_t j = 0; j < buckets_per_thread; j++) {
+            if (thread_buckets[t][j]) {
+                free_bucket_elements(thread_buckets[t][j]);
+                free(thread_buckets[t][j]);
+            }
+        }
+        if (thread_buckets[t]) {
+            free(thread_buckets[t]);
+        }
+    }
+    free(thread_buckets);
+    for (size_t i = 0; i < buckets_per_thread; i++) {
+        if (buckets + i) {
+            free_bucket_elements(buckets + i);
+        }
+        free(buckets + i);
+    }
+    free(buckets);
+}
+
 
 
 int main(int argc, char** argv)
 {
-    array_t          array;
-    Bucket_t***      thread_buckets;
-    
-    size_t *thread_element_counts;
-    size_t buckets_per_thread;
+    array_t array;
+    Bucket_t*** thread_buckets; // Buckets to which the threads fill the array values
+    Bucket_t* buckets; // Merged buckets to be sorted
+    size_t buckets_per_thread; // How many buckets each thread has
+
+    unsigned int seed;
     int num_threads;
 
-    if (argc != 2) {
+    if( argc != 2 )
+    {
         buckets_per_thread = BUCKETS;
-    } else {
+    }
+    else
+    {
         buckets_per_thread = atoi(argv[1]);
-        if (buckets_per_thread < 1) {
-            fprintf(stderr, "Nieprawidłowa liczba kubełków na wątek.\n");
+        if( buckets_per_thread < 1 || buckets_per_thread > ARRAY_SIZE )
+        {
+            fprintf(stderr, "Invalid number of buckets\n");
             return EXIT_FAILURE;
         }
     }
 
-    /* -------------------------------------------- */
-    /*             STRUCTURES ALLOCATION            */
-    /* -------------------------------------------- */
-    array = malloc(sizeof(array_element_t) * ARRAY_SIZE);
-    if (!array) { perror("malloc"); return EXIT_FAILURE; }
+    // ARRAY
+    // Array allocation
+    array = (array_t)malloc(sizeof(array_element_t) * ARRAY_SIZE);
+    if( !array )
+    {
+        perror("Array allocation failed");
+        return EXIT_FAILURE;
+    }
 
-    double t_total_s, t_total_e, t_total;
-    double t_fill_s, t_fill_e, t_fill;
-    double t_distribute_s, t_distribute_e, t_distribute;
-    double t_merge_s, t_merge_e, t_merge;
-    double t_sort_s, t_sort_e, t_sort;
-
-    // clear array to assert correct behaviour at the end
+    // Clear array to assert correct behaviour at the end
     for(size_t i=0; i<ARRAY_SIZE; i++)
     {
         array[i] = 0;
     }
 
+    // Allocation of the buckets with merged values from thread_buckets
+    buckets = malloc(buckets_per_thread * sizeof(Bucket_t));
+    if (!buckets) {
+        perror("Buckets allocation failed");
+        free(array);
+
+        return EXIT_FAILURE;
+    }
+
+    // Time measurements
+    double t_total_s, t_total_e, t_total;
+    double t_fill_s, t_fill_e, t_fill;
+    double t_distribute_s, t_distribute_e, t_distribute;
+    double t_merge_buckets_s, t_merge_buckets_e, t_merge_buckets;
+    double t_sort_s, t_sort_e, t_sort;
+    double t_merge_arr_s, t_merge_arr_e, t_merge_arr;
+
+    int error_flag = 0;
     MEASURE_TIME(t_total_s);
-
-    #pragma omp parallel
+    #pragma omp parallel private(seed)
     {
-        const int tid = omp_get_thread_num();
-        unsigned int seed = tid;
 
+        num_threads = omp_get_max_threads();
+        // Master thread allocates the buckets
         #pragma omp master
         {
-            num_threads = omp_get_num_threads();
-            thread_buckets = malloc(num_threads * sizeof(Bucket_t **));
-            thread_element_counts = calloc(num_threads, sizeof(size_t));
-            for (int t = 0; t < num_threads; t++) {
-                    thread_buckets[t] = malloc(buckets_per_thread * sizeof(Bucket_t *));
-                    for (size_t b = 0; b < buckets_per_thread; b++) {
-                        thread_buckets[t][b] = malloc(sizeof(Bucket_t));
-                        initialize_bucket(thread_buckets[t][b],
-                                        (ARRAY_SIZE / num_threads / buckets_per_thread) * BUCKET_SIZE_OVERHEAD);
-                    }
+            thread_buckets = (Bucket_t***)malloc(sizeof(Bucket_t**) * num_threads);
+            if( !thread_buckets )
+            {
+                #pragma omp critical
+                {
+                    error_flag = 1;
+                    perror("Buckets allocation failed");
                 }
-         }
+            }
+            for (int t = 0; t < num_threads; t++) {
+                thread_buckets[t] = (Bucket_t**)malloc(buckets_per_thread * sizeof(Bucket_t *));
+            }
+        }
         #pragma omp barrier
 
-        MEASURE_TIME(t_fill_s);
+        seed = omp_get_thread_num();
+        int tid = seed;
+
+        // Fill the array - each thread its part
+        MEASURE_TIME(t_fill_s)
+        #pragma omp for
+        for(size_t i=0; i<ARRAY_SIZE; i++)
+        {
+            // array[i] = rand_s(&seed); //rand_r(&seed);
+            // array[i] = rand_r(&seed);
+            array[i] = rand(); 
+        }
+        MEASURE_TIME(t_fill_e)
+
+        // Each thread allocates its buckets
+        size_t statistic_init_bucket_size = (ARRAY_SIZE / num_threads / buckets_per_thread) * BUCKET_SIZE_OVERHEAD;
+        for (size_t b = 0; b < buckets_per_thread; b++) {
+            thread_buckets[tid][b] = malloc(sizeof(Bucket_t));
+            initialize_bucket(thread_buckets[tid][b], statistic_init_bucket_size);
+        }
+        #pragma omp barrier // ??
+
+        // Each thread reads the array 
+        unsigned long long normalizing_values_factor = (unsigned long long)RAND_MAX + 1;
+        MEASURE_TIME(t_distribute_s)
         #pragma omp for
         for (size_t i = 0; i < ARRAY_SIZE; i++) {
-            array[i] = rand_r(&seed);
-        }
-        MEASURE_TIME(t_fill_e);
-        
-        size_t start = tid * (ARRAY_SIZE / num_threads);
-        size_t end = (tid == num_threads - 1) ? ARRAY_SIZE : (tid + 1) * (ARRAY_SIZE / num_threads);
-
-        const unsigned long long total_range = (unsigned long long)RAND_MAX + 1;
-        const unsigned long long range_per_bucket = total_range / buckets_per_thread;
-
-        MEASURE_TIME(t_distribute_s);
-        for (size_t i = start; i < end; i++) {
             unsigned int val = array[i];
-            size_t bucket_idx = val * buckets_per_thread / total_range;
+            size_t bucket_idx = val * buckets_per_thread / normalizing_values_factor;
             add_element_to_bucket(thread_buckets[tid][bucket_idx], val);
         }
-        MEASURE_TIME(t_distribute_e);
+        MEASURE_TIME(t_distribute_e)
 
-        #pragma omp barrier
-
-        MEASURE_TIME(t_merge_s);
-        #pragma omp parallel for
+        // Merge the buckets from all threads
+        MEASURE_TIME(t_merge_buckets_s)
+        #pragma omp for
         for (size_t b = 0; b < buckets_per_thread; b++) {
-            Bucket_t merged;
+            // Calculate the size of a bucket in merged buckets
             size_t total_count = 0;
-            for (int t = 0; t < num_threads; t++)
-                total_count += thread_buckets[t][b]->count;
-
-            initialize_bucket(&merged, total_count * BUCKET_SIZE_OVERHEAD);
-
             for (int t = 0; t < num_threads; t++) {
-                memcpy(merged.elements + merged.count, thread_buckets[t][b]->elements,
-                       thread_buckets[t][b]->count * sizeof(array_element_t));
-                merged.count += thread_buckets[t][b]->count;
+                total_count += thread_buckets[t][b]->count;
             }
+            initialize_bucket(&buckets[b], total_count);
 
-            qsort(merged.elements, merged.count, sizeof(array_element_t), compare_function);
-
-            // Zapis do tablicy początkowej
-            size_t write_offset = 0;
-            for (size_t bb = 0; bb < b; bb++) {
-                for (int t = 0; t < num_threads; t++)
-                    write_offset += thread_buckets[t][bb]->count;
+            size_t offset = 0;
+            for (int t = 0; t < num_threads; t++) {
+                Bucket_t* src_bucket = thread_buckets[t][b];
+                for (size_t j = 0; j < src_bucket->count; j++) {
+                    buckets[b].elements[offset++] = thread_buckets[t][b]->elements[j];
+                }
             }
-            memcpy(array + write_offset, merged.elements, merged.count * sizeof(array_element_t));
-            free_bucket_elements(&merged);
+            buckets[b].count = total_count;
         }
-        MEASURE_TIME(t_merge_e);
+        MEASURE_TIME(t_merge_buckets_e)
+
+        // Sort the buckets
+        MEASURE_TIME(t_sort_s)
+        #pragma omp for
+        for (size_t i = 0; i < buckets_per_thread; i++) {
+            qsort(buckets[i].elements, buckets[i].count, sizeof(int), compare_function);
+        }
+        MEASURE_TIME(t_sort_e);
+
+        // Fill the original array
+        MEASURE_TIME(t_fill_s)
+        #pragma omp for
+        for (size_t i = 0; i < buckets_per_thread; i++) {
+            const size_t offset = calculate_bucket_final_offset(buckets, i);
+
+            for (size_t j = 0; j < buckets[i].count; j++) {
+                array[offset + j] = buckets[i].elements[j];
+            }
+        }
+        MEASURE_TIME(t_fill_e);
     }
     MEASURE_TIME(t_total_e);
+
+    // Error flag from #pragma omp critical
+    if (error_flag) {
+        clear_memory(array, thread_buckets, buckets, num_threads, buckets_per_thread);
+        return EXIT_FAILURE;
+    }
+
+    // Check if array sorted
+    if( !array_is_sorted(array) )
+    {
+        perror("The resulting array is not sorted");
+        return EXIT_FAILURE;
+    }
+
+    // Free memory
+    for( size_t i=0; i<buckets_per_thread; i++ )
+    {
+        free_bucket_elements(buckets + i);
+    }
+    for (size_t t = 0; t < num_threads; t++) {
+        for (size_t j = 0; j < buckets_per_thread; j++) {
+            free_bucket_elements(thread_buckets[t][j]);
+            free(thread_buckets[t][j]);
+        }
+        free(thread_buckets[t]);
+    }
+    free(array);
+    free(thread_buckets);
+    free(buckets);
 
     t_total = t_total_e - t_total_s;
     t_fill = t_fill_e - t_fill_s;
     t_distribute = t_distribute_e - t_distribute_s;
-    t_merge = t_merge_e - t_merge_s;
+    t_merge_buckets = t_merge_buckets_e - t_merge_buckets_s;
+    t_sort = t_sort_e - t_sort_s;
+    t_merge_arr = t_merge_arr_e - t_merge_arr_s;
 
-    printf("%.15lf;%.15lf;%.15lf;%.15lf\n", t_total, t_fill, t_distribute, t_merge);
-
-    if (!array_is_sorted(array))
-        fprintf(stderr, "Sortowanie nie powiodło się!\n");
-
-    // Zwolnienie pamięci
-    for (int t = 0; t < num_threads; t++) {
-        for (size_t b = 0; b < buckets_per_thread; b++) {
-            free_bucket_elements(thread_buckets[t][b]);
-            free(thread_buckets[t][b]);
-        }
-        free(thread_buckets[t]);
-    }
-    free(thread_buckets);
-    free(thread_element_counts);
-    free(array);
+    // Standarized output in our code - t_merge
+    // Additional output here - t_merge_buckets - at the end
+    printf("%.15lf;%.15lf;%.15lf;%.15lf;%.15lf;%.15lf\n", t_total, t_fill, t_distribute, t_sort, t_merge_arr, t_merge_buckets);
 
     return EXIT_SUCCESS;
 }
