@@ -83,25 +83,23 @@ int main(int argc, char** argv) {
         }
         #pragma omp barrier
 
+        // Parallel array filling - each thread fills its own part
         MEASURE_TIME(t_fill_s);
         #pragma omp for
         for(size_t i = 0; i < ARRAY_SIZE; i++) {
-            array[i] = rand_r(&seed);
-            // array[i] = rand();
+            array[i] = rand_r(&seed); // rand_s(&seed); - Windows checking
         }
         MEASURE_TIME(t_fill_e);
-        #pragma omp barrier
+        
+        #pragma omp barrier // Make sure the array has been filled
 
+        // Each thread initializes its own buckets
         for(size_t i = 0; i < buckets_per_thread; ++i) {
             size_t initial_size = (ARRAY_SIZE / num_threads / buckets_per_thread) * BUCKET_SIZE_OVERHEAD;
             initialize_bucket(&thread_buckets[tid][i], initial_size);
         }
 
-        // const unsigned long long range_per_thread = ((unsigned long long)RAND_MAX + 1) / num_threads;
-        // const unsigned long long my_min_range = (unsigned long long)tid * range_per_thread;
-        // const unsigned long long my_max_range = (tid == num_threads - 1)
-        //     ? ((unsigned long long)RAND_MAX + 1)
-        //     : (unsigned long long)(tid + 1) * range_per_thread;
+        // The threads' range of values to handle
         const unsigned long long total_range = (unsigned long long)RAND_MAX + 1;
         const unsigned long long range_per_thread = total_range / num_threads;
         const unsigned long long my_min_range = tid * range_per_thread;
@@ -110,7 +108,8 @@ int main(int argc, char** argv) {
                                                 : (tid + 1) * range_per_thread;
 
 
-        // Each thread reads the whole array and distributes the elements to its buckets
+        // Each thread reads the whole array 
+        // then distributes the elements to its buckets
         MEASURE_TIME(t_distribute_s);
         for(size_t i = 0; i < ARRAY_SIZE; i++) {
             if((unsigned int)array[i] >= my_min_range && (unsigned int)array[i] < my_max_range) {
