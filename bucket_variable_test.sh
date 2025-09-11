@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=sort_test_%A_%a
-#SBATCH --account=plgmpr25-cpu
+#SBATCH --account=plglscclass24-cpu
 #SBATCH --partition=plgrid
 #SBATCH --array=1-13
 #SBATCH --ntasks=1
@@ -12,11 +12,10 @@
 
 # --- Configuration ---
 ALGO_NAME=$1
-NUM_RUNS=1
-# BUCKETS=("1" "100" "1000" "5000" "6000" "7000" "8000" "9000" "10000" "20000" "35000" "50000" "100000")
-BUCKETS=("7000" "8000")
+NUM_RUNS="${2:-1}"
+BUCKETS=("1" "100" "1000" "5000" "6000" "7000" "8000" "9000" "10000" "20000" "35000" "50000" "100000")
 
-OUTPUT_CSV="results.csv"
+OUTPUT_CSV="${3:-results.csv}"
 EXECUTABLE="./${ALGO_NAME}.o"
 BUCKET_ID=${SLURM_ARRAY_TASK_ID}
 

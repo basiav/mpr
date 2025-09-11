@@ -36,7 +36,7 @@ int main(int argc, char** argv)
         #pragma omp for schedule(SCHEDULER)
         for(long long i=0; i<ARRAY_SIZE; i++)
         {
-            array[i] = rand_s(&seeds[thread_id]); // rand_r / rand_s
+            array[i] = rand_r(&seeds[thread_id]); // rand_r / rand_s
         }
     }
 

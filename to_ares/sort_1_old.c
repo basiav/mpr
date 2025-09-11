@@ -10,8 +10,8 @@ _Pragma("omp master")   \
 x = omp_get_wtime();
 
 #define ARRAY_SIZE 20000000
-#define BUCKETS_PER_THREAD 5000
-#define BUCKET_SIZE_OVERHEAD 4
+#define BUCKETS 1000           // Domyślna liczba KUBEŁKÓW NA WĄTEK
+#define BUCKET_SIZE_OVERHEAD 4 // Mnożnik dla alokacji pamięci w kubełkach
 
 typedef int  array_element_t;
 typedef array_element_t* array_t;
@@ -42,7 +42,7 @@ int main(int argc, char** argv) {
     int              num_threads;
 
     if(argc != 2) {
-        buckets_per_thread = BUCKETS_PER_THREAD;
+        buckets_per_thread = BUCKETS;
     } else {
         buckets_per_thread = atoi(argv[1]);
         if(buckets_per_thread < 1) {
@@ -64,10 +64,12 @@ int main(int argc, char** argv) {
     double t_merge_s, t_merge_e, t_merge;
 
     MEASURE_TIME(t_total_s);
+
     #pragma omp parallel
     {
         const int tid = omp_get_thread_num();
-        unsigned int seed = tid;
+        // unsigned int seed = time(NULL) ^ tid;
+        unsigned int seed = omp_get_thread_num();
 
         #pragma omp master
         {

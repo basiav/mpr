@@ -167,9 +167,7 @@ int main(int argc, char** argv)
         #pragma omp for
         for(size_t i=0; i<ARRAY_SIZE; i++)
         {
-            // array[i] = rand_s(&seed); //rand_r(&seed);
-            // array[i] = rand_r(&seed);
-            array[i] = rand(); 
+            array[i] = rand_r(&seed); //rand_s(&seed); rand();
         }
         MEASURE_TIME(t_fill_e)
 
@@ -222,8 +220,8 @@ int main(int argc, char** argv)
         }
         MEASURE_TIME(t_sort_e);
 
-        // Fill the original array
-        MEASURE_TIME(t_fill_s)
+        // Merge buckets into the original array
+        MEASURE_TIME(t_merge_arr_s);
         #pragma omp for
         for (size_t i = 0; i < buckets_per_thread; i++) {
             const size_t offset = calculate_bucket_final_offset(buckets, i);
@@ -232,7 +230,7 @@ int main(int argc, char** argv)
                 array[offset + j] = buckets[i].elements[j];
             }
         }
-        MEASURE_TIME(t_fill_e);
+        MEASURE_TIME(t_merge_arr_e);
     }
     MEASURE_TIME(t_total_e);
 
