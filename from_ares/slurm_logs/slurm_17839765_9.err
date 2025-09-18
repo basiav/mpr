@@ -1,0 +1,1 @@
+/var/spool/slurmd/job17839774/slurm_script: line 41: ((: bucket_results_sort_1.csv: syntax error: invalid arithmetic operator (error token is ".csv")
